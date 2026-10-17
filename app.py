@@ -1,70 +1,28 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from preprocessing import clean_text, build_tfidf_matrix
+from preprocessing import clean_text, build_tfidf_matrix, extract_text_from_file
 from model import compute_novelty_score
 
 # Page Configuration
 st.set_page_config(
     page_title="Patent Novelty Checker",
     page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS for UI Enhancement
+# Custom Styling
 st.markdown("""
     <style>
-    /* Main Background & Fonts */
-    .main {
-        padding: 2rem;
-    }
-    .stApp {
-        background-color: #f8f9fa;
-    }
-    
-    /* Header Styling */
     .title-text {
-        font-size: 2.3rem;
+        font-size: 2.2rem;
         font-weight: 700;
         color: #1E293B;
-        margin-bottom: 0.2rem;
     }
     .subtitle-text {
-        font-size: 1.05rem;
+        font-size: 1rem;
         color: #64748B;
-        margin-bottom: 2rem;
-    }
-    
-    /* Section Cards */
-    .css-card {
-        background-color: #ffffff;
-        border-radius: 12px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         margin-bottom: 1.5rem;
-    }
-    
-    /* Result Cards */
-    .metric-container {
-        background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        text-align: center;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-    .metric-value {
-        font-size: 3rem;
-        font-weight: 800;
-        line-height: 1;
-        margin-top: 0.5rem;
-    }
-    .metric-label {
-        font-size: 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        opacity: 0.8;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -81,11 +39,10 @@ def load_and_prepare_data():
     tfidf_vectorizer, tfidf_matrix = build_tfidf_matrix(df)
     return df, tfidf_vectorizer, tfidf_matrix, dense_embeddings
 
-# Sidebar Controls & Information
+# Sidebar Controls
 with st.sidebar:
-    st.markdown("# 🔍")  # Displays a clean emoji icon directly
+    st.markdown("# 🔍")
     st.title("System Status")
-    
     
     try:
         df, tfidf_vectorizer, tfidf_matrix, dense_embeddings = load_and_prepare_data()
@@ -99,28 +56,51 @@ with st.sidebar:
     st.markdown("### ⚙️ Pipeline Weights")
     st.write("• **Keyword Match (TF-IDF):** 30%")
     st.write("• **Semantic Search (Transformer):** 70%")
-    
     st.divider()
-    st.caption("NLP Mini Project System v1.0")
+    st.caption("NLP Mini Project System")
 
-# Main Content Layout
+# Main Interface Layout
 col_input, col_results = st.columns([1, 1], gap="large")
 
 with col_input:
-    st.subheader("1. Propose Invention Draft")
-    user_input = st.text_area(
-        "Enter Invention Description / Abstract:",
-        height=220,
-        placeholder="Describe the technical core, components, and method of your proposed invention here..."
-    )
+    st.subheader("1. Provide Invention Details")
     
+    # Input Option Tabs: Paste Text vs Upload File
+    tab_text, tab_file = st.tabs(["✍️ Paste Description", "📁 Upload File (.txt / .pdf)"])
+    
+    user_input = ""
+    
+    with tab_text:
+        text_query = st.text_area(
+            "Enter Invention Description / Abstract:",
+            height=200,
+            placeholder="Describe the technical core, components, and method of your proposed invention here..."
+        )
+        if text_query.strip():
+            user_input = text_query
+            
+    with tab_file:
+        uploaded_file = st.file_uploader(
+            "Upload Patent Document (.txt or .pdf):",
+            type=["txt", "pdf"]
+        )
+        if uploaded_file is not None:
+            extracted_text = extract_text_from_file(uploaded_file)
+            if extracted_text.strip():
+                st.success(f"✅ Extracted {len(extracted_text.split())} words from **{uploaded_file.name}**")
+                with st.expander("Preview Extracted Document Text"):
+                    st.write(extracted_text[:600] + "...")
+                user_input = extracted_text
+            else:
+                st.error("Could not read text from the uploaded file.")
+
     analyze_btn = st.button("🚀 Run Novelty Analysis", type="primary", use_container_width=True)
 
 if analyze_btn:
     if not user_input.strip():
-        st.warning("⚠️ Please provide an invention description to perform evaluation.")
+        st.warning("⚠️ Please enter a description or upload a file before analyzing.")
     else:
-        with st.spinner("Processing NLP Pipeline & Semantic Embedding Distance..."):
+        with st.spinner("Processing NLP Pipeline & Computing Embeddings Distance..."):
             novelty_score, top_matches = compute_novelty_score(
                 user_input, df, dense_embeddings, tfidf_vectorizer, tfidf_matrix
             )
@@ -129,14 +109,7 @@ if analyze_btn:
             st.subheader("2. Novelty Assessment")
             
             # Metric Card Display
-            st.markdown(f"""
-                <div class="metric-container">
-                    <div class="metric-label">Calculated Novelty Score</div>
-                    <div class="metric-value">{novelty_score}%</div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            st.write("") # Spacing
+            st.metric(label="Calculated Novelty Score", value=f"{novelty_score}%")
             
             # Status Badge Decision
             if novelty_score >= 70:
